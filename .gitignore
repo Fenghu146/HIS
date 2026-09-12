@@ -1,8 +1,13 @@
-# Visual Studio IntelliSense cache (biggest offender)
-.vs/
+# ============================================================
+# HIS 医院信息系统 - Git 忽略规则
+# ============================================================
 
-# Build outputs
+# ---------- 编译产物 ----------
+# Visual Studio / MSBuild
+.vs/
 x64/
+Debug/
+Release/
 HIS_Syst.*/
 *.obj
 *.exe
@@ -16,18 +21,36 @@ HIS_Syst.*/
 *.FileListAbsolute.txt
 *.unsuccessfulbuild
 
-# VS project user files
+# VS 项目用户级文件
 *.vcxproj.user
 *.vcxproj.filters
 *.sln.docstates
 
-# Clion / JetBrains
+# MinGW / GCC
+*.o
+*.a
+*.d
+build/
+out/
+
+# ---------- IDE / 编辑器 ----------
+# JetBrains CLion
 .idea/
 *.iml
-
-# Claude config (local)
+# VS Code
+.vscode/
+# AI 助手本地配置
 .claude/
+.cursor/
 
-# Temp / backup
-*.bak
+# ---------- 运行时生成产物 ----------
+# 管理员统计报表导出（admin_tools.c 运行时生成）
+admin_stats_*.txt
+# 原子写入（write-then-rename）过程中的临时文件
 *.tmp
+*.bak
+
+# ---------- 操作系统 ----------
+Thumbs.db
+Desktop.ini
+.DS_Store

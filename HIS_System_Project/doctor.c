@@ -95,14 +95,10 @@ void addDoctor() {
     }
 
     HIS_STRNCPY(d.dept_id, dept_id, MAX_ID_LEN);
-    int retry = 0;
-    do {
-        GenerateID(d.id, ID_PREFIX_DOCTOR);
-        if (++retry > 10) {
-            printf("[错误] 无法生成唯一医生ID！\n");
-            return;
-        }
-    } while (FindNode(doctor_list, d.id) != NULL);
+    if (generateUniqueID(d.id, ID_PREFIX_DOCTOR, doctor_list) != 0) {
+        printf("[错误] 无法生成唯一医生ID！\n");
+        return;
+    }
     if (InsertNode(doctor_list, -1, &d, sizeof(Doctor), d.id) == 0) {
         dept->doctor_count++;
         printf("\n[成功] 医生添加成功，医生ID: %s\n", d.id);

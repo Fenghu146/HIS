@@ -1,9 +1,4 @@
 #include "his.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <ctype.h>
 
 /*
  * 医疗记录管理模块

@@ -45,18 +45,12 @@ static void addDrug() {
         printf("\n[错误] 科室ID不存在！\n");
         return;
     }
-    Department* dept = (Department*)dept_node->data;
-
     inputDrugInfo(&d);
     HIS_STRNCPY(d.dept_id, dept_id, MAX_ID_LEN);
-    int retry = 0;
-    do {
-        GenerateID(d.id, ID_PREFIX_DRUG);
-        if (++retry > 10) {
-            printf("[错误] 无法生成唯一药品ID！\n");
-            return;
-        }
-    } while (FindNode(drug_list, d.id) != NULL);
+    if (generateUniqueID(d.id, ID_PREFIX_DRUG, drug_list) != 0) {
+        printf("[错误] 无法生成唯一药品ID！\n");
+        return;
+    }
 
     if (InsertNode(drug_list, -1, &d, sizeof(Drug), d.id) == 0) {
         printf("\n[成功] 药品添加成功，药品ID: %s\n", d.id);
@@ -516,15 +510,9 @@ static void issuePrescription() {
     // 操作3: 添加医疗记录
     MedicalRecord r;
     memset(&r, 0, sizeof(MedicalRecord));
-    {
-        int retry = 0;
-        do {
-            GenerateID(r.id, ID_PREFIX_RECORD);
-            if (++retry > 10) {
-                printf("[错误] 无法生成唯一发药记录ID！\n");
-                return;
-            }
-        } while (FindNode(record_list, r.id) != NULL);
+    if (generateUniqueID(r.id, ID_PREFIX_RECORD, record_list) != 0) {
+        printf("[错误] 无法生成唯一发药记录ID！\n");
+        return;
     }
     HIS_STRNCPY(r.patient_id, patient_id, MAX_ID_LEN);
     HIS_STRNCPY(r.doctor_id, doctor_id, MAX_ID_LEN);

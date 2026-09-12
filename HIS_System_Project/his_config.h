@@ -82,7 +82,7 @@ typedef enum {
 typedef enum {
     REG_STATUS_NONE = 0,      // 未挂号
     REG_STATUS_PENDING = 1,   // 待就诊
-    REG_STATUS_IN_PROGRESS = 2,// 就诊中（未使用）
+    REG_STATUS_IN_PROGRESS = 2,// 就诊中
     REG_STATUS_DONE = 3       // 已完成
 } RegStatus;
 

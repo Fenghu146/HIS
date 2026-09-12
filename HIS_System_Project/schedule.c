@@ -190,14 +190,10 @@ static void addSchedule() {
     s.is_available = 1;
     s.current_patients = 0;
 
-    int retry = 0;
-    do {
-        GenerateID(s.id, ID_PREFIX_SCHEDULE);
-        if (++retry > 10) {
-            printf("[错误] 无法生成唯一排班ID！\n");
-            return;
-        }
-    } while (FindNode(schedule_list, s.id) != NULL);
+    if (generateUniqueID(s.id, ID_PREFIX_SCHEDULE, schedule_list) != 0) {
+        printf("[错误] 无法生成唯一排班ID！\n");
+        return;
+    }
 
     if (InsertNode(schedule_list, -1, &s, sizeof(DoctorSchedule), s.id) == 0) {
         saveScheduleData();

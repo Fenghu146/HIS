@@ -1,0 +1,7 @@
+# 归档的办公文档与截图按二进制处理，避免差异膨胀与误判
+*.docx binary
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary

@@ -148,7 +148,7 @@ typedef struct {
 
 // ==================== 3. 通用函数声明 ====================
 // --- 链表操作 (his_link.c实现) ---
-LinkList* InitList();
+LinkList* InitList(void);
 int InsertNode(LinkList* list, int index, void* data, int data_size, const char* id);
 int DeleteNode(LinkList* list, const char* id);
 ListNode* FindNode(LinkList* list, const char* id);

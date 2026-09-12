@@ -36,14 +36,10 @@ static void addDept() {
     Department d;
     memset(&d, 0, sizeof(Department));
     inputDeptInfo(&d);
-    int retry = 0;
-    do {
-        GenerateID(d.id, ID_PREFIX_DEPT);
-        if (++retry > 10) {
-            printf("[错误] 无法生成唯一科室ID！\n");
-            return;
-        }
-    } while (FindNode(dept_list, d.id) != NULL);
+    if (generateUniqueID(d.id, ID_PREFIX_DEPT, dept_list) != 0) {
+        printf("[错误] 无法生成唯一科室ID！\n");
+        return;
+    }
     d.doctor_count = 0;
     if (InsertNode(dept_list, -1, &d, sizeof(Department), d.id) == 0) {
         printf("\n[成功] 科室添加成功，科室ID: %s\n", d.id);
@@ -140,14 +136,10 @@ static void addBed() {
     if (!dept_node) { printf("\n[错误] 科室ID不存在！\n"); return; }
     inputBedInfo(&b);
     HIS_STRNCPY(b.dept_id, dept_id, MAX_ID_LEN);
-    int retry = 0;
-    do {
-        GenerateID(b.id, ID_PREFIX_BED);
-        if (++retry > 10) {
-            printf("[错误] 无法生成唯一床位ID！\n");
-            return;
-        }
-    } while (FindNode(bed_list, b.id) != NULL);
+    if (generateUniqueID(b.id, ID_PREFIX_BED, bed_list) != 0) {
+        printf("[错误] 无法生成唯一床位ID！\n");
+        return;
+    }
     b.status = BED_FREE;
     HIS_STRNCPY(b.patient_id, "-1", MAX_ID_LEN);
     b.admit_time[0] = '\0';
@@ -277,7 +269,7 @@ static void queryBed() {
         ListNode* p = bed_list->head;
         while (p) {
             Bed* b = (Bed*)p->data;
-            if (b->status == status) { printBedInfo(b); found = 1; }
+            if (b->status == (BedStatus)status) { printBedInfo(b); found = 1; }
             p = p->next;
         }
         if (!found) printf("没有%s床位。\n", status == 0 ? "空闲" : "占用");
@@ -439,7 +431,7 @@ static void statsSubMenu() {
             Department* dept = (Department*)dept_node->data;
             calculateBedStats(dept_id, &total, &occupied);
             char title[64];
-            sprintf(title, "科室 %s 床位统计", dept->name);
+            snprintf(title, sizeof(title), "科室 %s 床位统计", dept->name);
             printBedStats(title, total, occupied);
         }
         else { printf("\n[错误] 该科室不存在！\n"); }

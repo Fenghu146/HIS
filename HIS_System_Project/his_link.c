@@ -6,7 +6,7 @@
  *   TraverseList / FreeList
  *   所有模块共用此链表演，data 域为 void* 支持多类型
  */
-LinkList* InitList() {
+LinkList* InitList(void) {
     LinkList* list = (LinkList*)malloc(sizeof(LinkList));
     if (!list) return NULL;
     list->head = NULL;
