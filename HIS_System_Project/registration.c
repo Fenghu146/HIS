@@ -51,12 +51,17 @@ static void parseAppointment(char* line, void* data) {
 
     token = next_token(&rest); if (!token) return;
     a->cost = atoll(token);
+    if (a->cost < 0) a->cost = 0;
 }
 
 // ==================== 内部辅助函数 ====================
 
 // 费用计算：cost（分）* (1 - insurance_ratio)，四舍五入到分
+// 比例先夹紧到 [0,1]，防止异常数据（如医保比例>1）算出负费用导致余额反向增加
 static long long calcPay(long long cost, float ratio) {
+    if (ratio < 0.0f) ratio = 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+    if (cost <= 0) return 0;
     return (long long)(cost * (1.0 - ratio) + 0.5);
 }
 
@@ -330,33 +335,35 @@ void appointmentRegistration(Patient* p) {
         return;
     }
 
-    p->balance -= pay;
-
+    // 先构造预约记录并确认能生成唯一ID，再执行扣款（避免扣款后失败无法回滚）
     Appointment appt;
     memset(&appt, 0, sizeof(Appointment));
-    GenerateID(appt.id, ID_PREFIX_APPOINTMENT);
+    if (generateUniqueID(appt.id, ID_PREFIX_APPOINTMENT, appointment_list) != 0) {
+        printf("\n[错误] 无法生成唯一预约ID，请稍后重试！\n");
+        return;
+    }
     HIS_STRNCPY(appt.patient_id, p->id, sizeof(appt.patient_id));
     HIS_STRNCPY(appt.schedule_id, selected_schedule->id, sizeof(appt.schedule_id));
     HIS_STRNCPY(appt.status, "已预约", sizeof(appt.status));
     appt.cost = pay;
     GetSystemTime(appt.create_time);
 
-    if (InsertNode(appointment_list, -1, &appt, sizeof(Appointment), appt.id) == 0) {
-        selected_schedule->current_patients++;
-        saveAppointmentData();
-        saveScheduleData();
-        savePatientData();
-        printf("\n【预约成功】\n");
-        printf("  患者: %s (ID: %s)\n", p->name, p->id);
-        printf("  预约日期: %s %s\n", selected_schedule->date, selected_schedule->time_slot);
-        printf("  支付金额: %.2f 元\n", (double)pay / 100.0);
-        printf("  剩余余额: %.2f 元\n", (double)p->balance / 100.0);
-        printf("  预约ID: %s\n", appt.id);
-    }
-    else {
+    if (InsertNode(appointment_list, -1, &appt, sizeof(Appointment), appt.id) != 0) {
         printf("\n[失败] 预约失败，请重试。\n");
-        p->balance += pay;
+        return;
     }
+
+    p->balance -= pay;
+    selected_schedule->current_patients++;
+    saveAppointmentData();
+    saveScheduleData();
+    savePatientData();
+    printf("\n【预约成功】\n");
+    printf("  患者: %s (ID: %s)\n", p->name, p->id);
+    printf("  预约日期: %s %s\n", selected_schedule->date, selected_schedule->time_slot);
+    printf("  支付金额: %.2f 元\n", (double)pay / 100.0);
+    printf("  剩余余额: %.2f 元\n", (double)p->balance / 100.0);
+    printf("  预约ID: %s\n", appt.id);
 }
 
 // ==================== 患者自己查看/取消挂号记录 ====================
@@ -492,6 +499,11 @@ void cancelMyRegistration(Patient* p) {
         }
         if (strcmp(a->status, "已取消") == 0) {
             printf("\n[提示] 该预约已经取消过了。\n");
+            return;
+        }
+        if (strcmp(a->status, "已预约") != 0) {
+            /* 只有“已预约”状态可取消并退款，防止对已完成/异常状态的预约重复退款 */
+            printf("\n[提示] 该预约当前状态为「%s」，不可取消。\n", a->status);
             return;
         }
 

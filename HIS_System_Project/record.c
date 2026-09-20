@@ -9,7 +9,7 @@
 static void formatRecord(void* data, char* line);
 static void parseRecord(char* line, void* data);
 static void displayPatientRecords(const char* patient_id);
-static void inputRecordInfo(MedicalRecord* r);
+static int inputRecordInfo(MedicalRecord* r);
 static Patient* validateDoctorPatientAccess(const char* patient_id, const char* doctor_id);
 static void addMedicalRecordByDoctor(int recordType);
 
@@ -61,6 +61,8 @@ static void parseRecord(char* line, void* data) {
     // 可选第8个字段：cancelled（向后兼容）
     token = next_token(&rest);
     if (token) r->cancelled = atoi(token);
+    if (r->cancelled) r->cancelled = 1;
+    if (r->cost < 0) r->cost = 0;
 }
 
 // ==================== 医生端权限校验辅助 ====================
@@ -106,6 +108,7 @@ static void addMedicalRecordByDoctor(int recordType) {
     char buf[MAX_LINE_LEN];
     inputLine(buf, sizeof(buf));
     r.cost = (long long)(atof(buf) * 100.0 + 0.5);
+    if (r.cost < 0) r.cost = 0;   /* 负费用无业务含义，直接归零 */
     printf("请输入%s详情: ", label);
     inputLine(r.detail, sizeof(r.detail));
     if (!ValidateNoPipe(r.detail)) { printf("详情不能包含分隔符'|'！\n"); return; }
@@ -350,7 +353,7 @@ static void displayPatientRecords(const char* patient_id) {
     }
 }
 
-static void inputRecordInfo(MedicalRecord* r) {
+static int inputRecordInfo(MedicalRecord* r) {
     char buf[MAX_LINE_LEN];
 
     printf("请输入患者ID: ");
@@ -372,11 +375,13 @@ static void inputRecordInfo(MedicalRecord* r) {
     printf("请输入费用: ");
     inputLine(buf, sizeof(buf));
     r->cost = (long long)(atof(buf) * 100.0 + 0.5);
+    if (r->cost < 0) r->cost = 0;   /* 负费用会让余额越花越多 */
 
     printf("请输入详情: ");
     inputLine(buf, sizeof(buf));
-    if (!ValidateNoPipe(buf)) { printf("详情不能包含分隔符'|'！\n"); return; }
+    if (!ValidateNoPipe(buf)) { printf("详情不能包含分隔符'|'！\n"); return 0; }
     HIS_STRNCPY(r->detail, buf, sizeof(r->detail));
+    return 1;
 }
 
 // ==================== 管理员视角的医疗记录 CRUD ====================
@@ -391,7 +396,10 @@ void inputAndViewRecords(void) {
 void inputAndAddRecord(void) {
     MedicalRecord r;
     memset(&r, 0, sizeof(MedicalRecord));
-    inputRecordInfo(&r);
+    if (!inputRecordInfo(&r)) {
+        printf("[取消] 记录信息不合法，本次新增已放弃。\n");
+        return;
+    }
 
     if (!FindNode(patient_list, r.patient_id)) {
         printf("[错误] 患者ID不存在！\n");
@@ -460,6 +468,7 @@ void inputAndModifyRecord(void) {
     inputLine(buf, sizeof(buf));
     if (strlen(buf) > 0) {
         r->cost = (long long)(atof(buf) * 100.0 + 0.5);
+        if (r->cost < 0) r->cost = 0;
     }
 
     printf("请输入新的记录类型 (1-挂号 2-诊断 3-检查 4-住院 5-处方) (当前: %d): ", r->type);

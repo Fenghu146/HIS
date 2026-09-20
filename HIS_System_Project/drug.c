@@ -23,6 +23,67 @@ static void drugStockSubMenu();                         //药品库存管理子�
 static void prescriptionSubMenu();                      //开药发药子菜单
 
 // ==================== 1. 药品基本信息管理相关函数 ====================
+/* 单次出入库/发药数量上限与库存总量上限：防止误输入与 int 溢出导致库存变负 */
+#define DRUG_MAX_QTY    1000000
+#define DRUG_MAX_STOCK  100000000
+
+/* 统一的药品数量输入：必须是 1~DRUG_MAX_QTY 的整数，其余一律拒绝 */
+static int readDrugQuantity(const char* prompt) {
+    char buf[MAX_LINE_LEN];
+    while (1) {
+        printf("%s", prompt);
+        if (!inputLine(buf, sizeof(buf))) {
+            if (feof(stdin)) { printf("\n[提示] 输入流已结束，系统退出。\n"); exit(0); }
+            continue;
+        }
+        long long v = 0;
+        if (parseLongStrict(buf, &v) == 0 && v >= 1 && v <= DRUG_MAX_QTY) {
+            return (int)v;
+        }
+        printf("[错误] 请输入 1-%d 之间的整数！\n", DRUG_MAX_QTY);
+    }
+}
+
+/* 读取非负浮点数（元）；EOF 时退出，非法/超范围输入重新提示 */
+static void readNonNegativeFloat(const char* prompt, float* out) {
+    char buf[MAX_LINE_LEN];
+    while (1) {
+        printf("%s", prompt);
+        if (!inputLine(buf, sizeof(buf))) {
+            if (feof(stdin)) { printf("\n[提示] 输入流已结束，系统退出。\n"); exit(0); }
+            continue;
+        }
+        if (strlen(buf) == 0) continue;
+        char* endptr = NULL;
+        double v = strtod(buf, &endptr);
+        while (endptr && (*endptr == ' ' || *endptr == '\t')) endptr++;
+        if (endptr && endptr != buf && *endptr == '\0' && v >= 0.0 && v <= 1000000.0) {
+            *out = (float)v;
+            return;
+        }
+        printf("[错误] 请输入 0 ~ 1000000 之间的数字！\n");
+    }
+}
+
+/* 读取 0~max 的整数（纯数字或空串取默认值）；EOF 时退出 */
+static void readNonNegativeInt(const char* prompt, int max, int* out) {
+    char buf[MAX_LINE_LEN];
+    while (1) {
+        printf("%s", prompt);
+        if (!inputLine(buf, sizeof(buf))) {
+            if (feof(stdin)) { printf("\n[提示] 输入流已结束，系统退出。\n"); exit(0); }
+            continue;
+        }
+        if (strlen(buf) == 0) return;   /* 留空 → 保留调用方给的默认值 */
+        long long v = 0;
+        if (parseLongStrict(buf, &v) == 0 && v >= 0 && v <= max) {
+            *out = (int)v;
+            return;
+        }
+        printf("[错误] 请输入 0 ~ %d 之间的整数！\n", max);
+    }
+}
+
 // 添加药品 (支持多科室)
 static void addDrug() {
     Drug d;
@@ -132,36 +193,18 @@ static void modifyDrug() {
             break;
 
         case 5:
-            printf("请输入新单价: ");
-            inputLine(buf, sizeof(buf));
-            {
-                float val = atof(buf);
-                if (val < 0) { printf("[错误] 单价不能为负数！\n"); break; }
-                d->price = val;
-                printf("[成功] 单价已更新。\n");
-            }
+            readNonNegativeFloat("请输入新单价: ", &d->price);
+            printf("[成功] 单价已更新为 %.2f 元。\n", d->price);
             break;
 
         case 6:
-            printf("请输入新库存: ");
-            inputLine(buf, sizeof(buf));
-            {
-                int val = atoi(buf);
-                if (val < 0) { printf("[错误] 库存不能为负数！\n"); break; }
-                d->stock = val;
-                printf("[成功] 库存已更新。\n");
-            }
+            readNonNegativeInt("请输入新库存: ", DRUG_MAX_STOCK, &d->stock);
+            printf("[成功] 库存已更新为 %d。\n", d->stock);
             break;
 
         case 7:
-            printf("请输入新预警阈值: ");
-            inputLine(buf, sizeof(buf));
-            {
-                int val = atoi(buf);
-                if (val < 0) { printf("[错误] 阈值不能为负数！\n"); break; }
-                d->warning_threshold = val;
-                printf("[成功] 预警阈值已更新。\n");
-            }
+            readNonNegativeInt("请输入新预警阈值: ", DRUG_MAX_STOCK, &d->warning_threshold);
+            printf("[成功] 预警阈值已更新为 %d。\n", d->warning_threshold);
             break;
 
         default:
@@ -299,15 +342,11 @@ static void drugInbound() {
     printf("\n当前药品: %s | 当前库存: %d | 预警阈值: %d\n",
         d->general_name, d->stock, d->warning_threshold);
 
-    int quantity;
-    char buf_q[64];
-    while (1) {
-        printf("请输入入库数量: ");
-        readString(buf_q, sizeof(buf_q));
-        if (strlen(buf_q) == 0) continue;
-        quantity = atoi(buf_q);
-        if (quantity > 0) break;
-        printf("[错误] 输入无效，请重新输入: ");
+    int quantity = readDrugQuantity("请输入入库数量: ");
+
+    if (d->stock > DRUG_MAX_STOCK - quantity) {
+        printf("\n[失败] 入库后库存将超过上限 %d，本次入库取消。\n", DRUG_MAX_STOCK);
+        return;
     }
 
     d->stock += quantity;
@@ -344,16 +383,7 @@ static void drugOutbound() {
 
     printf("\n当前药品: %s | 当前库存: %d\n", d->general_name, d->stock);
 
-    int quantity;
-    char buf_q[64];
-    while (1) {
-        printf("请输入出库数量: ");
-        readString(buf_q, sizeof(buf_q));
-        if (strlen(buf_q) == 0) continue;
-        quantity = atoi(buf_q);
-        if (quantity > 0) break;
-        printf("[错误] 输入无效，请重新输入: ");
-    }
+    int quantity = readDrugQuantity("请输入出库数量: ");
 
     if (d->stock < quantity) {
         printf("\n[失败] 库存不足！当前库存: %d\n", d->stock);
@@ -445,15 +475,7 @@ static void issuePrescription() {
     Drug* d = (Drug*)drug_node->data;
 
     // 3. 输入数量并校验
-    char buf_q[64];
-    while (1) {
-        printf("请输入发药数量: ");
-        readString(buf_q, sizeof(buf_q));
-        if (strlen(buf_q) == 0) continue;
-        quantity = atoi(buf_q);
-        if (quantity > 0) break;
-        printf("[错误] 输入无效，请重新输入: ");
-    }
+    quantity = readDrugQuantity("请输入发药数量: ");
 
     if (d->stock < quantity) {
         printf("\n[失败] 药品库存不足！当前库存: %d\n", d->stock);
@@ -502,24 +524,27 @@ static void issuePrescription() {
         return;
     }
 
-    // 8. 执行数据更新
+    // 8. 执行数据更新（先生成记录ID，确保失败时不会出现“扣了钱/药却没有记录”）
+    MedicalRecord r;
+    memset(&r, 0, sizeof(MedicalRecord));
+    if (generateUniqueID(r.id, ID_PREFIX_RECORD, record_list) != 0) {
+        printf("[错误] 无法生成唯一发药记录ID，本次发药取消！\n");
+        return;
+    }
+
     // 操作1: 扣减药品库存
     d->stock -= quantity;
     // 操作2: 扣减患者余额
     p->balance -= patient_pay_cents;
     // 操作3: 添加医疗记录
-    MedicalRecord r;
-    memset(&r, 0, sizeof(MedicalRecord));
-    if (generateUniqueID(r.id, ID_PREFIX_RECORD, record_list) != 0) {
-        printf("[错误] 无法生成唯一发药记录ID！\n");
-        return;
-    }
     HIS_STRNCPY(r.patient_id, patient_id, MAX_ID_LEN);
     HIS_STRNCPY(r.doctor_id, doctor_id, MAX_ID_LEN);
     r.type = RECORD_PRESCR;
-    r.cost = total_cost_cents;
-    snprintf(r.detail, MAX_DETAIL_LEN, "门诊发药: %s x%d, 医保报销%.2f元",
-        d->general_name, quantity, (double)insurance_pay_cents / 100.0);
+    /* 与挂号记录口径一致：cost 记录患者实际自付金额；总费用与报销额写入详情便于追溯 */
+    r.cost = patient_pay_cents;
+    snprintf(r.detail, MAX_DETAIL_LEN, "门诊发药: %s x%d, 总费用%.2f元, 医保报销%.2f元",
+        d->general_name, quantity,
+        (double)total_cost_cents / 100.0, (double)insurance_pay_cents / 100.0);
     GetSystemTime(r.create_time);
     InsertNode(record_list, -1, &r, sizeof(MedicalRecord), r.id);
     p->record_count++;
@@ -576,42 +601,20 @@ static void inputDrugInfo(Drug* d) {
         break;
     }
 
-    // 数字输入（带合法性校验）
-    char buf_num[64];
-    while (1) {
-        printf("请输入单价: ");
-        readString(buf_num, sizeof(buf_num));
-        if (strlen(buf_num) == 0) continue;
-        d->price = (float)atof(buf_num);
-        if (d->price >= 0) break;
-        printf("输入无效，请输入非负数: ");
-    }
+    // 数字输入（严格校验：只接受合法数字，避免 "abc" 被 atoi/atof 静默当作 0）
+    readNonNegativeFloat("请输入单价: ", &d->price);
 
-    while (1) {
-        printf("请输入初始库存: ");
-        readString(buf_num, sizeof(buf_num));
-        if (strlen(buf_num) == 0) continue;
-        d->stock = atoi(buf_num);
-        if (d->stock >= 0) break;
-        printf("输入无效，请输入非负数: ");
+    {
+        int stock = 0;
+        readNonNegativeInt("请输入初始库存: ", DRUG_MAX_STOCK, &stock);
+        d->stock = stock;
     }
 
     int default_threshold = (int)(d->stock * DRUG_WARNING_RATIO);
     if (default_threshold < 1) default_threshold = 1;
+    d->warning_threshold = default_threshold;
     printf("请输入库存预警阈值 (直接回车默认 %d，即库存的 %.0f%%): ", default_threshold, DRUG_WARNING_RATIO * 100);
-    char buf_threshold[32];
-    if (!inputLine(buf_threshold, sizeof(buf_threshold))) { d->warning_threshold = default_threshold; return; }
-    if (strlen(buf_threshold) == 0) {
-        d->warning_threshold = default_threshold;
-    }
-    else {
-        d->warning_threshold = atoi(buf_threshold);
-        while (d->warning_threshold < 0) {
-            printf("输入无效，请输入非负数: ");
-            if (!inputLine(buf_threshold, sizeof(buf_threshold))) break;
-            d->warning_threshold = atoi(buf_threshold);
-        }
-    }
+    readNonNegativeInt("", DRUG_MAX_STOCK, &d->warning_threshold);
 }
 
 //打印药品信息
@@ -642,12 +645,28 @@ static void formatDrugLine(void* data, char* line) {
 }
 
 //将一行药品文本转换为药品结构
+//  注意：这里不能用 sscanf("%[^|]") —— 该转换符无法匹配空字段（商品名/别名常为空），
+//  一旦遇到空字段 sscanf 会提前结束，导致其后的单价/库存/科室全部丢失（重启即数据损坏）。
 static void parseDrugLine(char* line, void* data) {
     Drug* d = (Drug*)data;
     memset(d, 0, sizeof(Drug));
-    sscanf(line, "%19[^|]|%49[^|]|%49[^|]|%49[^|]|%f|%d|%d|%19[^\n]",
-        d->id, d->general_name, d->trade_name, d->alias,
-        &d->price, &d->stock, &d->warning_threshold, d->dept_id);
+    char* rest = line;
+    char* token;
+
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->id, token, sizeof(d->id));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->general_name, token, sizeof(d->general_name));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->trade_name, token, sizeof(d->trade_name));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->alias, token, sizeof(d->alias));
+    token = next_token(&rest); if (token) d->price = (float)atof(token);
+    token = next_token(&rest); if (token) d->stock = atoi(token);
+    token = next_token(&rest); if (token) d->warning_threshold = atoi(token);
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->dept_id, token, sizeof(d->dept_id));
+
+    /* 载入后校正：损坏/被篡改的文件不应把非法库存、负价带进业务逻辑 */
+    if (!(d->price >= 0.0f)) d->price = 0.0f;
+    if (d->stock < 0) d->stock = 0;
+    if (d->stock > DRUG_MAX_STOCK) d->stock = DRUG_MAX_STOCK;
+    if (d->warning_threshold < 0) d->warning_threshold = 0;
 }
 
 // ==================== 5. 子菜单与对外接口 ====================

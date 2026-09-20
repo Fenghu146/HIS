@@ -52,7 +52,7 @@ int InsertNode(LinkList* list, int index, void* data, int data_size, const char*
 
 /* 按ID删除节点 */
 int DeleteNode(LinkList* list, const char* id) {
-    if (!list || !list->head) return -1;
+    if (!list || !list->head || !id) return -1;
 
     ListNode* p = list->head;
     ListNode* prev = NULL;
@@ -78,6 +78,7 @@ int DeleteNode(LinkList* list, const char* id) {
 
 /* 按ID查找节点 */
 ListNode* FindNode(LinkList* list, const char* id) {
+    if (!list || !id) return NULL;
     ListNode* p = list->head;
     while (p != NULL) {
         if (strcmp(p->id, id) == 0) {

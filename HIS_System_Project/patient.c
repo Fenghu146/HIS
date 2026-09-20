@@ -119,6 +119,27 @@ static void parsePatient(char* line, void* data) {
     if (token) {
         HIS_STRNCPY(p->register_record_id, token, sizeof(p->register_record_id));
     }
+
+    /* 载入后的数据合理性校正：防止被手工篡改/损坏的文件把非法值带进业务逻辑
+       （例如医保比例 >1 会导致费用为负，挂号反而增加余额） */
+    if (!(p->insurance_ratio >= 0.0f) || p->insurance_ratio > 1.0f) {
+        p->insurance_ratio = (p->insurance_ratio > 1.0f) ? 1.0f : 0.0f;
+    }
+    if (p->balance < 0) p->balance = 0;
+    if (p->record_count < 0) p->record_count = 0;
+    if (p->age < 0) p->age = 0;
+    if (p->age > 150) p->age = 150;
+    if (p->is_inpatient != PATIENT_IN) p->is_inpatient = PATIENT_OUT;
+    if (p->register_status < REG_STATUS_NONE || p->register_status > REG_STATUS_DONE) {
+        p->register_status = REG_STATUS_NONE;
+    }
+    if (p->pin[0] != '\0') {
+        int pin_ok = (strlen(p->pin) == 6);
+        for (int i = 0; pin_ok && p->pin[i]; i++) {
+            if (p->pin[i] < '0' || p->pin[i] > '9') pin_ok = 0;
+        }
+        if (!pin_ok) p->pin[0] = '\0';   /* 非法 PIN 视作未设置，避免患者被永久锁死 */
+    }
 }
 
 // ==================== 手机号唯一性检查 ====================
@@ -405,25 +426,39 @@ void patientViewOnlyModule(Patient* p) {
         printf("  暂无医疗记录。\n");
     }
 
-    long long total_cost_cents = 0;
-    double total_insurance_val = 0;
+    /*
+     * 费用汇总
+     * 约定：MedicalRecord.cost 记录的是「患者实际自付金额（分）」（已扣除医保报销部分），
+     * 挂号/预约/发药/退款都基于该口径，这里直接累加即为自付合计。
+     * 旧实现在此处再次乘以医保比例“估算报销”，是对已扣减金额的二次计算，已修正。
+     */
+    long long self_pay_cents = 0;
+    long long cancelled_cents = 0;
     int cost_count = 0;
+    int cancelled_count = 0;
     rp = record_list->head;
     while (rp) {
         MedicalRecord* r = (MedicalRecord*)rp->data;
-        if (strcmp(r->patient_id, p->id) == 0 && !r->cancelled) {
-            total_cost_cents += r->cost;
-            total_insurance_val += r->cost * p->insurance_ratio;
-            cost_count++;
+        if (strcmp(r->patient_id, p->id) == 0) {
+            if (r->cancelled) {
+                cancelled_count++;
+                cancelled_cents += r->cost;
+            }
+            else {
+                self_pay_cents += r->cost;
+                cost_count++;
+            }
         }
         rp = rp->next;
     }
-    if (cost_count > 0) {
+    if (cost_count > 0 || cancelled_count > 0) {
         printf("\n--- 费用汇总 ---\n");
-        printf("  总记录数: %d\n", cost_count);
-        printf("  总费用: %.2f 元\n", (double)total_cost_cents / 100.0);
-        printf("  医保预计报销: %.2f 元\n", total_insurance_val / 100.0);
-        printf("  预计自付: %.2f 元\n", (total_cost_cents - total_insurance_val) / 100.0);
+        printf("  有效记录数: %d\n", cost_count);
+        printf("  累计费用: %.2f 元（医保结算后患者应付/已付金额）\n", (double)self_pay_cents / 100.0);
+        if (cancelled_count > 0) {
+            printf("  已取消记录: %d 笔，涉及 %.2f 元（已退款，不计入合计）\n",
+                cancelled_count, (double)cancelled_cents / 100.0);
+        }
     }
 
     waitForEnter();

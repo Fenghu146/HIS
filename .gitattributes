@@ -5,3 +5,6 @@
 *.jpg  binary
 *.jpeg binary
 *.gif  binary
+
+# 测试脚本必须保持 LF：脚本内的菜单输入若带 CR，会把 "\r" 带进程序的输入解析
+*.sh text eol=lf

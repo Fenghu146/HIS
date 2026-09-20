@@ -50,6 +50,11 @@ admin_stats_*.txt
 *.tmp
 *.bak
 
+# ---------- 测试运行产物 ----------
+# 回归测试脚本的工作目录（源码副本、临时 data、用例输出与数据快照）
+HIS_System_Project/tests/.work/
+HIS_System_Project/tests/run.log
+
 # ---------- 操作系统 ----------
 Thumbs.db
 Desktop.ini
