@@ -165,6 +165,8 @@ int getValidChoice(int min, int max);   // 统一菜单输入校验
 void GenerateID(char* id, char type);
 int generateUniqueID(char* out_id, char prefix, LinkList* list);  // 安全生成唯一ID，0成功/-1失败
 int ValidateNumber(const char* str);
+int parseLongStrict(const char* str, long long* out);  // 严格整数解析，0成功/-1失败
+int ValidateDateString(const char* date);              // YYYY-MM-DD 真实性校验
 int ValidatePhone(const char* phone);           // 手机号格式校验
 int ValidateIDCard(const char* id_card);         // 身份证号格式校验
 int ValidateNoPipe(const char* str);             // 禁止字段分隔符"|"

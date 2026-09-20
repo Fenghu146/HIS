@@ -1,4 +1,5 @@
 ﻿#include "his.h"
+#include <errno.h>
 
 /*
  * 通用工具函数模块
@@ -69,6 +70,11 @@ int getValidChoice(int min, int max) {
     int choice;
     while (1) {
         if (!inputLine(buf, sizeof(buf))) {
+            /* 输入流结束（如管道/重定向读完）时必须退出，否则会无限循环刷屏 */
+            if (feof(stdin)) {
+                printf("\n[提示] 输入流已结束，系统退出。\n");
+                exit(0);
+            }
             printf("输入异常，请重新输入: ");
             continue;
         }
@@ -106,17 +112,63 @@ void PrintSeparator() {
     printf("\n");
 }
 
-// 自动生成ID (前缀 + 时间戳6位 + 序号)
-void GenerateID(char* id, char type) {
-    static int seq = 1;
+/* 生成 ID 用的全局自增序号（进程内单调递增） */
+static int s_id_seq = 1;
+
+/* 取得当天日期前缀 YYMMDD */
+static void getIDDatePrefix(char* out, size_t cap) {
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
-    snprintf(id, MAX_ID_LEN, "%c%02d%02d%02d%03d",
-        type, tm->tm_year % 100, tm->tm_mon + 1, tm->tm_mday, seq++);
+    snprintf(out, cap, "%02d%02d%02d", tm->tm_year % 100, tm->tm_mon + 1, tm->tm_mday);
+}
+
+/*
+ * 将自增序号推进到「已存在的同前缀、同日期 ID 最大序号 + 1」。
+ *
+ * 背景：序号是 static 变量，程序重启后归 1；若当天已生成过数据，
+ * 重启后前若干次生成都会与历史 ID 撞号，而 generateUniqueID 只重试
+ * MAX_ID_RETRY(10) 次，撞号超过 10 个就会彻底无法生成新 ID。
+ * 在生成前扫描链表对齐序号，可根治该问题（ID 格式保持不变）。
+ */
+static void syncIDSequence(LinkList* list, char prefix) {
+    if (!list) return;
+    char date_prefix[16];
+    getIDDatePrefix(date_prefix, sizeof(date_prefix));
+    size_t dlen = strlen(date_prefix);
+
+    int max_seq = 0;
+    ListNode* p = list->head;
+    while (p) {
+        const char* id = p->id;
+        size_t len = strlen(id);
+        if (len > 1 + dlen && id[0] == prefix && strncmp(id + 1, date_prefix, dlen) == 0) {
+            const char* tail = id + 1 + dlen;
+            int all_digit = (*tail != '\0');
+            for (const char* q = tail; *q; q++) {
+                if (*q < '0' || *q > '9') { all_digit = 0; break; }
+            }
+            if (all_digit) {
+                long v = atol(tail);
+                if (v > 0 && v < 100000000L && (int)v > max_seq) max_seq = (int)v;
+            }
+        }
+        p = p->next;
+    }
+    if (max_seq + 1 > s_id_seq) s_id_seq = max_seq + 1;
+}
+
+// 自动生成ID (前缀 + 日期6位 + 序号)，序号单调递增，长度不足 20 字节时已截断保护
+void GenerateID(char* id, char type) {
+    char date_prefix[16];
+    getIDDatePrefix(date_prefix, sizeof(date_prefix));
+    snprintf(id, MAX_ID_LEN, "%c%s%03d", type, date_prefix, s_id_seq++);
+    id[MAX_ID_LEN - 1] = '\0';
 }
 
 // 安全地生成唯一ID：最多尝试 MAX_ID_RETRY 次，返回 0 成功 / -1 失败
 int generateUniqueID(char* out_id, char prefix, LinkList* list) {
+    if (!out_id) return -1;
+    syncIDSequence(list, prefix);   /* 与已持久化数据对齐，避免重启后撞号 */
     for (int i = 0; i < MAX_ID_RETRY; i++) {
         GenerateID(out_id, prefix);
         if (!FindNode(list, out_id)) return 0;
@@ -130,6 +182,50 @@ int ValidateNumber(const char* str) {
     for (int i = 0; str[i]; i++) {
         if (str[i] < '0' || str[i] > '9') return 0;
     }
+    return 1;
+}
+
+/*
+ * 严格解析整数：仅允许可选正负号 + 纯数字 + 首尾空白。
+ * 成功返回 0 并写入 *out；失败（空串、夹杂字符、溢出）返回 -1。
+ */
+int parseLongStrict(const char* str, long long* out) {
+    if (!str || !out) return -1;
+    char* endptr = NULL;
+    errno = 0;
+    long long v = strtoll(str, &endptr, 10);
+    if (endptr == str || errno == ERANGE) return -1;
+    while (*endptr == ' ' || *endptr == '\t' || *endptr == '\r' || *endptr == '\n') endptr++;
+    if (*endptr != '\0') return -1;
+    *out = v;
+    return 0;
+}
+
+/* 2024-02 闰年判断（仅用于排班日期合法性校验） */
+static int isLeapYear(int y) {
+    return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+}
+
+/*
+ * 校验 YYYY-MM-DD 日期是否真实存在（含月份天数与闰年），
+ * 仅做格式/范围校验，不限制必须为未来日期。合法返回 1。
+ */
+int ValidateDateString(const char* date) {
+    if (!date || strlen(date) != 10) return 0;
+    if (date[4] != '-' || date[7] != '-') return 0;
+    for (int i = 0; i < 10; i++) {
+        if (i == 4 || i == 7) continue;
+        if (date[i] < '0' || date[i] > '9') return 0;
+    }
+    int y = (date[0] - '0') * 1000 + (date[1] - '0') * 100 + (date[2] - '0') * 10 + (date[3] - '0');
+    int m = (date[5] - '0') * 10 + (date[6] - '0');
+    int d = (date[8] - '0') * 10 + (date[9] - '0');
+    if (y < 1900 || y > 2999) return 0;
+    if (m < 1 || m > 12) return 0;
+    static const int days_in_month[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    int max_day = days_in_month[m - 1];
+    if (m == 2 && isLeapYear(y)) max_day = 29;
+    if (d < 1 || d > max_day) return 0;
     return 1;
 }
 

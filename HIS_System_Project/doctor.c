@@ -163,27 +163,30 @@ void modifyDoctor() {
             printf("[成功] 擅长领域已更新。\n");
             break;
 
-        case 4:
+        case 4: {
             printf("请输入新登录账号: ");
             inputLine(buf, sizeof(buf));
             if (!ValidateNoPipe(buf)) { printf("[错误] 账号不能包含分隔符'|'！\n"); break; }
             if (strlen(buf) == 0) { printf("[错误] 账号不能为空！\n"); break; }
             // 检查账号唯一性（排除自身）
-            {
-                ListNode* p = doctor_list->head;
-                while (p) {
-                    Doctor* existing = (Doctor*)p->data;
-                    if (existing != d && strcmp(existing->account, buf) == 0) {
-                        printf("[错误] 账号 '%s' 已被其他医生使用！\n", buf);
-                        break;
-                    }
-                    p = p->next;
+            int conflict = 0;
+            ListNode* p = doctor_list->head;
+            while (p) {
+                Doctor* existing = (Doctor*)p->data;
+                if (existing != d && strcmp(existing->account, buf) == 0) {
+                    conflict = 1;
+                    break;
                 }
-                if (p) break; // 账号冲突
+                p = p->next;
+            }
+            if (conflict) {
+                printf("[错误] 账号 '%s' 已被其他医生使用！\n", buf);
+                break;   /* 仅放弃本次修改，不退出整个修改菜单 */
             }
             HIS_STRNCPY(d->account, buf, sizeof(d->account));
             printf("[成功] 登录账号已更新。\n");
             break;
+        }
 
         case 5:
             printf("请输入新密码: ");
@@ -253,9 +256,19 @@ void deleteDoctor() {
 
     printf("\n[确认] 确定要删除医生 %s (%s) 吗？(y/n): ", d->name, d->id);
     if (getConfirm()) {
-        ListNode* dept_node = FindNode(dept_list, d->dept_id);
-        if (dept_node) { Department* dept = (Department*)dept_node->data; dept->doctor_count--; }
-        if (DeleteNode(doctor_list, id) == 0) { printf("\n[成功] 医生删除成功！\n"); saveDoctorData(); saveDeptData(); }
+        if (DeleteNode(doctor_list, id) == 0) {
+            ListNode* dept_node = FindNode(dept_list, d->dept_id);
+            if (dept_node) {
+                Department* dept = (Department*)dept_node->data;
+                if (dept->doctor_count > 0) dept->doctor_count--;
+            }
+            printf("\n[成功] 医生删除成功！\n");
+            saveDoctorData();
+            saveDeptData();
+        }
+        else {
+            printf("\n[失败] 医生删除失败！\n");
+        }
     }
     else { printf("\n[取消] 已取消删除操作。\n"); }
 }
@@ -376,12 +389,22 @@ static void formatDoctorLine(void* data, char* line) {
 static void parseDoctorLine(char* line, void* data) {
     Doctor* d = (Doctor*)data;
     memset(d, 0, sizeof(Doctor));
-    char date_buf[11] = "";
-    int n = sscanf(line, "%[^|]|%[^|]|%[^|]|%[^|]|%[^|]|%[^|]|%d|%d|%10s",
-        d->id, d->name, d->dept_id, d->specialty, d->account, d->password,
-        &d->max_register, &d->current_register, date_buf);
-    if (n < 8) { d->max_register = 0; d->current_register = 0; }
-    if (n >= 9) {
-        HIS_STRNCPY(d->register_date, date_buf, sizeof(d->register_date));
-    }
+
+    /* 不使用 sscanf("%[^|]")：该转换符无法匹配空字段（如未填写的擅长领域），
+       遇到空字段会提前结束解析，导致其后的账号/密码/挂号量全部丢失。 */
+    char* rest = line;
+    char* token;
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->id, token, sizeof(d->id));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->name, token, sizeof(d->name));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->dept_id, token, sizeof(d->dept_id));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->specialty, token, sizeof(d->specialty));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->account, token, sizeof(d->account));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->password, token, sizeof(d->password));
+    token = next_token(&rest); if (token) d->max_register = atoi(token);
+    token = next_token(&rest); if (token) d->current_register = atoi(token);
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->register_date, token, sizeof(d->register_date));
+
+    /* 载入后校正：负的挂号量会导致限额判断反向 */
+    if (d->max_register < 0) d->max_register = 0;
+    if (d->current_register < 0) d->current_register = 0;
 }

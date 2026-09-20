@@ -62,6 +62,12 @@ static void parseSchedule(char* line, void* data) {
 
     token = next_token(&rest); if (!token) return;
     s->is_available = atoi(token);
+
+    /* 载入后校正：号源数不能为负，已预约数不能超过号源数 */
+    if (s->max_patients < 0) s->max_patients = 0;
+    if (s->current_patients < 0) s->current_patients = 0;
+    if (s->current_patients > s->max_patients) s->current_patients = s->max_patients;
+    if (s->is_available) s->is_available = 1;
 }
 
 // ==================== 排班子菜单 ====================
@@ -146,11 +152,11 @@ static void addSchedule() {
     while (1) {
         printf("请输入排班日期 (YYYY-MM-DD): ");
         inputLine(buf, sizeof(buf));
-        if (strlen(buf) == 10 && buf[4] == '-' && buf[7] == '-') {
+        if (ValidateDateString(buf)) {
             HIS_STRNCPY(s.date, buf, sizeof(s.date));
             break;
         }
-        printf("[错误] 日期格式无效，请使用 YYYY-MM-DD 格式！\n");
+        printf("[错误] 日期无效，请使用 YYYY-MM-DD 格式且日期需真实存在（如 2026-02-29 不存在）！\n");
     }
 
     while (1) {
@@ -244,11 +250,11 @@ static void viewSchedule() {
         while (1) {
             printf("请输入日期 (YYYY-MM-DD): ");
             inputLine(buf, sizeof(buf));
-            if (strlen(buf) == 10 && buf[4] == '-' && buf[7] == '-') {
+            if (ValidateDateString(buf)) {
                 HIS_STRNCPY(filter_date, buf, sizeof(filter_date));
                 break;
             }
-            printf("[错误] 日期格式无效！\n");
+            printf("[错误] 日期无效，请使用 YYYY-MM-DD 格式！\n");
         }
     }
 

@@ -338,7 +338,13 @@ static void formatDeptLine(void* data, char* line) {
 
 static void parseDeptLine(char* line, void* data) {
     Department* d = (Department*)data;
-    sscanf(line, "%19[^|]|%49[^|]|%d", d->id, d->name, &d->doctor_count);
+    memset(d, 0, sizeof(Department));
+    char* rest = line;
+    char* token;
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->id, token, sizeof(d->id));
+    token = next_token(&rest); if (token) HIS_STRNCPY(d->name, token, sizeof(d->name));
+    token = next_token(&rest); if (token) d->doctor_count = atoi(token);
+    if (d->doctor_count < 0) d->doctor_count = 0;
 }
 
 static void inputBedInfo(Bed* b) {
@@ -365,11 +371,18 @@ static void formatBedLine(void* data, char* line) {
 static void parseBedLine(char* line, void* data) {
     Bed* b = (Bed*)data;
     memset(b, 0, sizeof(Bed));
-    int room_type, status;
-    sscanf(line, "%[^|]|%d|%[^|]|%d|%[^|]|%[^\n]",
-        b->id, &room_type, b->dept_id, &status, b->patient_id, b->admit_time);
-    b->room_type = (RoomType)room_type;
-    b->status = (BedStatus)status;
+    /* 空床位的入住患者/入院时间为空，必须用 next_token 逐字段解析（sscanf 无法匹配空字段） */
+    char* rest = line;
+    char* token;
+    token = next_token(&rest); if (token) HIS_STRNCPY(b->id, token, sizeof(b->id));
+    token = next_token(&rest); if (token) b->room_type = (RoomType)atoi(token);
+    token = next_token(&rest); if (token) HIS_STRNCPY(b->dept_id, token, sizeof(b->dept_id));
+    token = next_token(&rest); if (token) b->status = (BedStatus)atoi(token);
+    token = next_token(&rest); if (token) HIS_STRNCPY(b->patient_id, token, sizeof(b->patient_id));
+    token = next_token(&rest); if (token) HIS_STRNCPY(b->admit_time, token, sizeof(b->admit_time));
+
+    if (b->room_type < ROOM_NORMAL || b->room_type > ROOM_VIP) b->room_type = ROOM_NORMAL;
+    if (b->status != BED_OCCUPIED) b->status = BED_FREE;
 }
 
 // ==================== 5. 统计与辅助函数实现 ====================
