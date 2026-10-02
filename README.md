@@ -11,7 +11,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![Build](https://img.shields.io/badge/build-VS2022%20%7C%20GCC-green.svg)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg)
-![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-95%20passed-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
 ---
@@ -53,7 +53,7 @@ HIS 医院信息系统是一个用于模拟真实医院业务流转的 C 语言�
 | 角色 | 登录方式 | 说明 |
 | --- | --- | --- |
 | 管理员 | 账号 `admin` + 密码（默认 `123456`，可修改并持久化） | 全系统数据管理与统计 |
-| 医生 | 档案中的登录账号 + 密码（`nibble-swap` 混淆后以 `hex:` 文本存储） | 仅能操作与自己相关的患者与记录 |
+| 医生 | 档案中的登录账号 + 密码（SHA-256 摘要存储，`sha256:` 前缀） | 仅能操作与自己相关的患者与记录 |
 | 患者 | 患者 ID + 6 位访问 PIN（可选设置） | 自助挂号 / 预约 / 缴费 / 查询 |
 
 > 三种角色的登录均带**连续失败 5 次锁定**保护（进程级）。
@@ -125,7 +125,7 @@ HIS 医院信息系统是一个用于模拟真实医院业务流转的 C 语言�
 | `his_config.h` | 长度常量、枚举、ID 前缀、文件路径、业务默认值 |
 | `his.h` | 8 个业务结构体、通用链表定义、全部函数声明、`HIS_STRNCPY` 安全宏、8 个全局链表 `extern` |
 | `his_link.c` | 通用单向链表：`InitList / InsertNode / DeleteNode / FindNode / TraverseList / FreeList` |
-| `his_tool.c` | 输入校验、唯一 ID 生成、文件读写、密码混淆、身份证校验、时间获取、菜单辅助 |
+| `his_tool.c` | 输入校验、唯一 ID 生成、文件读写、凭据哈希（SHA-256）、身份证校验、时间获取、菜单辅助 |
 | `his_main.c` | 程序入口 `main()`、三角色登录认证、主菜单路由、管理员密码持久化 |
 | `patient.c` | 患者 CRUD、独立输入校验、PIN 验证、自助充值、患者登录与自助服务菜单 |
 | `registration.c` | 普通挂号、预约挂号、查看 / 取消挂号与退费 |
@@ -171,7 +171,7 @@ his_config.h ──► his.h ──► his_main.c ──► 各业务模块
 
 - 每条记录序列化为一行文本，字段以 `|` 分隔，例如患者行：
   `id|name|age|gender|ratio|balance|is_inpatient|bed_id|record_count|phone|id_card|doctor_id|dept_id|status|time|pin|record_id`
-- 医生密码字段（`doctor.txt` 第 6 字段）持久化为 `hex:` + 十六进制文本：混淆后密码含非法 UTF-8 字节，直接写入文本文件会破坏文件契约（macOS/BSD 的 `cut`/`sed` 会丢弃含非法字节的行）；加载端兼容旧版原始字节格式；
+- 凭据字段（医生密码/患者 PIN/管理员口令）统一持久化为 `sha256:` + 64 位十六进制摘要，明文不落盘，注册/改密时立即写哈希；加载端兼容旧版 `hex:` 混淆与旧版明文格式，登录成功时自动迁移为 `sha256:` 并落盘；
 - 写入采用 **write-then-rename**：先写临时文件 `.tmp`，`fclose` 后 `remove` 原文件并 `rename`，保证原子性；
 - 解析器对**可选尾部字段做了向后兼容**处理，旧数据文件可直接加载；
 - 运行期每次修改即时回写文件，退出时再统一保存一次兜底。
@@ -276,12 +276,12 @@ his.exe          # Windows
 | 角色 | 账号 | 密码 |
 | --- | --- | --- |
 | 管理员 | `admin` | `123456` |
-| 医生 | 见 `data/doctor.txt` 中的 `account` 字段 | 由管理员创建时设置（文件中为混淆存储） |
+| 医生 | 见 `data/doctor.txt` 中的 `account` 字段 | 由管理员创建时设置（文件中仅存 SHA-256 摘要） |
 | 患者 | 患者 ID（`P` 开头） | 6 位访问 PIN（创建时可留空不设置） |
 
 ### 6.5 运行回归测试
 
-项目自带**全流程回归测试**（81 项断言），覆盖「建科→建医生→建床位→建药品→患者自助建号/充值/挂号→医生接诊/写病历→药房发药→患者查费用/取消挂号退款→排班→预约/取消预约」的完整业务闭环：
+项目自带**全流程回归测试**（95 项断言，含凭据哈希与旧格式迁移守护），覆盖「建科→建医生→建床位→建药品→患者自助建号/充值/挂号→医生接诊/写病历→药房发药→患者查费用/取消挂号退款→排班→预约/取消预约」的完整业务闭环：
 
 ```bash
 cd HIS_System_Project
@@ -330,14 +330,14 @@ ID 规则：`前缀 + 年月日(6位) + 3位序号`，共 10 字符，全局唯�
 | 文件 | 对应实体 |
 | --- | --- |
 | `data/patient.txt` | 患者 |
-| `data/doctor.txt` | 医生（密码为混淆存储） |
+| `data/doctor.txt` | 医生（密码为 `sha256:` 摘要存储） |
 | `data/dept.txt` | 科室 |
 | `data/bed.txt` | 床位 |
 | `data/drug.txt` | 药品 |
 | `data/record.txt` | 医疗记录 |
 | `data/schedule.txt` | 排班 |
 | `data/appointment.txt` | 预约 |
-| `data/admin.dat` | 管理员密码（首次修改后生成） |
+| `data/admin.dat` | 管理员口令摘要（启动加载/修改后生成） |
 
 ---
 
@@ -346,7 +346,7 @@ ID 规则：`前缀 + 年月日(6位) + 3位序号`，共 10 字符，全局唯�
 ### 8.1 安全机制
 
 - **登录锁定**：管理员 / 医生连续 5 次登录失败后锁定（进程级）。
-- **密码混淆**：医生密码以 `nibble-swap`（半字节交换）形式存储，属**自逆变换**，仅用于避免明文落盘，**不是加密**；登录时兼容旧版明文数据并自动迁移。
+- **凭据哈希**：医生密码/患者 PIN/管理员口令统一以 SHA-256 摘要（`sha256:` 前缀）存储，明文不落盘；旧版 `hex:` 半字节混淆与旧版明文格式在登录成功时自动迁移为摘要。摘要用于防明文泄露，**不能替代传输加密**；
 - **PIN 保护**：查看医疗记录、取消挂号、充值等敏感操作需验证 6 位访问 PIN（未设置时直接放行）。
 - **字段防注入**：所有自由文本字段禁止包含分隔符 `|`，防止破坏文件格式。
 
