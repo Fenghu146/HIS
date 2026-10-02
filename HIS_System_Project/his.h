@@ -179,6 +179,8 @@ int SaveDataToFile(LinkList* list, const char* filename, void (*format_func)(voi
 int LoadDataFromFile(LinkList* list, const char* filename, void (*parse_func)(char*, void*));
 void PrintSeparator();                                              // 打印菜单分隔线
 void passwordObfuscate(char* pwd);                                  // 密码混淆（nibble-swap）
+void passwordHexEncode(const char* raw, char* out, size_t cap);      // 密码字段编码为 hex: 文本
+int  passwordHexDecode(const char* field, char* out, size_t cap);    // 解码 hex: 字段，兼容旧版原始字节
 void waitForEnter(void);                                            // 等待回车继续
 
 // ==================== 功能函数 ====================

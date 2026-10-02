@@ -282,6 +282,62 @@ void passwordObfuscate(char* pwd) {
     }
 }
 
+// 密码字段持久化编码：把任意字节的混淆密码转成纯 ASCII 十六进制文本。
+// 背景：密码经 nibble-swap 混淆后会产生非法 UTF-8 的高位字节，
+// 直接写入"文本文件"会破坏文件契约——macOS/BSD 的 cut/sed 在 UTF-8
+// locale 下会丢弃含非法字节的行，导致按行提取字段全部落空。
+// 字段格式："hex:" + 大写十六进制；旧版原始字节字段由解码函数兼容读取。
+#define PWD_HEX_PREFIX "hex:"
+static int his_hexval(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+void passwordHexEncode(const char* raw, char* out, size_t cap) {
+    static const char HEX[] = "0123456789ABCDEF";
+    size_t n = raw ? strlen(raw) : 0;
+    size_t need = sizeof(PWD_HEX_PREFIX) + n * 2;
+    if (cap < need) {
+        if (cap > 0) out[0] = '\0';
+        return;
+    }
+    memcpy(out, PWD_HEX_PREFIX, sizeof(PWD_HEX_PREFIX) - 1);
+    for (size_t i = 0; i < n; i++) {
+        unsigned char b = (unsigned char)raw[i];
+        out[sizeof(PWD_HEX_PREFIX) - 1 + i * 2] = HEX[b >> 4];
+        out[sizeof(PWD_HEX_PREFIX) - 1 + i * 2 + 1] = HEX[b & 0x0F];
+    }
+    out[sizeof(PWD_HEX_PREFIX) - 1 + n * 2] = '\0';
+}
+
+int passwordHexDecode(const char* field, char* out, size_t cap) {
+    if (!field || !out || cap == 0) return 0;
+    if (strncmp(field, PWD_HEX_PREFIX, sizeof(PWD_HEX_PREFIX) - 1) != 0) {
+        // 旧版格式：原始字节直接存储，按原样拷贝以兼容历史数据
+        his_strncpy(out, field, cap);
+        return 0;
+    }
+    const char* p = field + sizeof(PWD_HEX_PREFIX) - 1;
+    size_t n = strlen(p);
+    if (n % 2 != 0 || n / 2 + 1 > cap) {
+        out[0] = '\0';
+        return 0;
+    }
+    for (size_t i = 0; i < n; i += 2) {
+        int hi = his_hexval(p[i]);
+        int lo = his_hexval(p[i + 1]);
+        if (hi < 0 || lo < 0) {
+            out[0] = '\0';
+            return 0;
+        }
+        out[i / 2] = (char)((hi << 4) | lo);
+    }
+    out[n / 2] = '\0';
+    return 1;
+}
+
 void GetSystemTime(char* time_str) {
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
@@ -321,7 +377,7 @@ int LoadDataFromFile(LinkList* list, const char* filename, void (*parse_func)(ch
     while (fgets(line, sizeof(line), fp)) {
         line[strcspn(line, "\n")] = 0;
         // 修改：去掉可能的 \r (Windows换行符)
-        int len = strlen(line);
+        size_t len = strlen(line);
         if (len > 0 && line[len - 1] == '\r') line[len - 1] = '\0';
 
         // 跳过空行或只有分隔符的行

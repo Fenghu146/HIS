@@ -381,8 +381,10 @@ static void inputDoctorInfo(Doctor* d) {
 
 static void formatDoctorLine(void* data, char* line) {
     Doctor* d = (Doctor*)data;
+    char pwd_hex[MAX_PWD_LEN * 2 + 16];
+    passwordHexEncode(d->password, pwd_hex, sizeof(pwd_hex));
     snprintf(line, MAX_LINE_LEN, "%s|%s|%s|%s|%s|%s|%d|%d|%s",
-        d->id, d->name, d->dept_id, d->specialty, d->account, d->password,
+        d->id, d->name, d->dept_id, d->specialty, d->account, pwd_hex,
         d->max_register, d->current_register, d->register_date);
 }
 
@@ -399,7 +401,7 @@ static void parseDoctorLine(char* line, void* data) {
     token = next_token(&rest); if (token) HIS_STRNCPY(d->dept_id, token, sizeof(d->dept_id));
     token = next_token(&rest); if (token) HIS_STRNCPY(d->specialty, token, sizeof(d->specialty));
     token = next_token(&rest); if (token) HIS_STRNCPY(d->account, token, sizeof(d->account));
-    token = next_token(&rest); if (token) HIS_STRNCPY(d->password, token, sizeof(d->password));
+    token = next_token(&rest); if (token) passwordHexDecode(token, d->password, sizeof(d->password));
     token = next_token(&rest); if (token) d->max_register = atoi(token);
     token = next_token(&rest); if (token) d->current_register = atoi(token);
     token = next_token(&rest); if (token) HIS_STRNCPY(d->register_date, token, sizeof(d->register_date));
