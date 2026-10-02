@@ -595,6 +595,56 @@ EOF
 }
 
 # ============================================================
+# 阶段 13：凭据存储统一 sha256（含旧格式登录迁移）
+# ============================================================
+phase_cred_storage() {
+    echo "== 阶段13：凭据存储统一 sha256（含旧格式登录迁移） =="
+
+    # 管理员密码（首次 admin 登录时已从明文自动迁移）
+    assert_has "管理员密码已哈希存储" "sha256:" "$DATA/admin.dat"
+    assert_has "sha256(123456) 算法基准正确" "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92" "$DATA/admin.dat"
+    assert_not_has "管理员密码非明文存储" "123456" "$DATA/admin.dat"
+
+    # 患者 PIN / 医生密码（注册时即哈希，明文不落盘）
+    assert_has "患者PIN已哈希存储" "sha256:" "$DATA/patient.txt"
+    assert_not_has "患者PIN非明文存储" "654321" "$DATA/patient.txt"
+    assert_has "医生密码已哈希存储" "sha256:" "$DATA/doctor.txt"
+    assert_not_has "医生密码非明文存储" "doc123" "$DATA/doctor.txt"
+
+    # --- 旧格式登录迁移：植入旧版明文行 + 旧版 hex: 混淆行 ---
+    cat >> "$DATA/doctor.txt" <<'SEED'
+DL00000001|旧版明文医生|K1|旧专长|legacy1|old123|30|0|2026-10-02
+DL00000002|旧版混淆医生|K1|旧专长|legacy2|hex:865687435363|30|0|2026-10-02
+SEED
+    cat > "$OUT/in_legacy1.txt" <<'IN1'
+2
+legacy1
+old123
+0
+0
+IN1
+    run_case legacy1 "$OUT/in_legacy1.txt"
+    local o="$OUT/legacy1.out"
+    assert_has "旧版明文密码登录成功" "登录成功" "$o"
+    assert_has "旧版明文密码登录带迁移提示" "已迁移密码" "$o"
+    assert_has "旧版明文密码已迁移为sha256" "sha256:841a94cdd2e04c6cb3e24e3cab7498d176170611382fcc8387ebaa1ac7e95880" "$DATA/doctor.txt"
+    assert_not_has "旧版明文密码不再落盘" "old123" "$DATA/doctor.txt"
+
+    cat > "$OUT/in_legacy2.txt" <<'IN2'
+2
+legacy2
+hex456
+0
+0
+IN2
+    run_case legacy2 "$OUT/in_legacy2.txt"
+    o="$OUT/legacy2.out"
+    assert_has "旧版hex混淆密码登录成功" "登录成功" "$o"
+    assert_has "旧版hex混淆密码迁移后为sha256" "sha256:bca0d83f2cada579aca35e065f4596fe086d128a905cfe70d91f51c78266ba1f" "$DATA/doctor.txt"
+    assert_not_has "旧版hex混淆值不再落盘" "hex:865687435363" "$DATA/doctor.txt"
+}
+
+# ============================================================
 # 主流程
 # ============================================================
 setup
@@ -610,6 +660,7 @@ phase_money_boundary
 phase_integrity_boundary
 phase_eof
 phase_persistence
+phase_cred_storage
 
 echo "============================================================"
 echo "测试汇总：PASS=$PASS  FAIL=$FAIL"
