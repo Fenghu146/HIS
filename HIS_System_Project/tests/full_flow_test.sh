@@ -15,6 +15,10 @@
 # ============================================================
 set -u
 
+# 字节级确定性：数据提取（cut/sed）与字符串断言（grep -F）都按字节工作，
+# 不受 macOS/BSD 工具在 UTF-8 locale 下对非法字节序列的行为差异影响。
+export LC_ALL=C
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/.."
 WORK="$HERE/.work"
@@ -23,7 +27,10 @@ OUT="$WORK/out"
 
 CC="${CC:-gcc}"
 CFLAGS="-std=c99 -w -O2 -I."
-if command -v timeout >/dev/null 2>&1; then TMO="timeout 60"; else TMO=""; fi
+# 超时保护：功能性探测而非 command -v——Windows Git Bash 的 PATH 里
+# timeout 解析到 System32\timeout.exe（拒绝 stdin 重定向，报错即退出），
+# 只有能真正跑通 `timeout 1 true` 的实现才可用。
+if timeout 1 true >/dev/null 2>&1; then TMO="timeout 60"; else TMO=""; fi
 
 PASS=0
 FAIL=0
