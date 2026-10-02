@@ -7,6 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    name: Lint (shellcheck / cppcheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: HIS_System_Project
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck tests/*.sh
+
+      - name: cppcheck
+        run: |
+          sudo apt-get update >/dev/null && sudo apt-get install -y cppcheck >/dev/null
+          cppcheck --std=c99 --enable=warning,performance,portability \
+            --suppress=missingIncludeSystem --error-exitcode=1 *.c *.h
+
   build-and-test:
     name: Build & Regression (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
