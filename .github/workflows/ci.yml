@@ -54,4 +54,15 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build solution
-        run: msbuild HIS_System_Project/HIS_System_Project.sln /p:Configuration=Release /p:Platform=x64 /m
+        run: msbuild HIS_System_Project/HIS_System_Project.sln /p:Configuration=Release /p:Platform=x64 /m "/flp:LogFile=msbuild-warn.log;Verbosity=Normal"
+
+      - name: Check zero warnings (MSVC)
+        shell: bash
+        run: |
+          out=$(grep -cE "warning C[0-9]+" msbuild-warn.log || true)
+          echo "warning count = $out"
+          if [ "$out" -ne 0 ]; then
+            grep -E "warning C[0-9]+" msbuild-warn.log | sort -u | head -20
+            echo "::error::MSVC 编译告警未清零（$out 条）"
+            exit 1
+          fi

@@ -91,7 +91,7 @@ static void parsePatient(char* line, void* data) {
     token = next_token(&rest); if (!token) return; HIS_STRNCPY(p->name, token, sizeof(p->name));
     token = next_token(&rest); if (!token) return; p->age = atoi(token);
     token = next_token(&rest); if (!token) return; HIS_STRNCPY(p->gender, token, sizeof(p->gender));
-    token = next_token(&rest); if (!token) return; p->insurance_ratio = atof(token);
+    token = next_token(&rest); if (!token) return; p->insurance_ratio = (float)atof(token);
     token = next_token(&rest); if (!token) return; p->balance = atoll(token);
     token = next_token(&rest); if (!token) return; p->is_inpatient = atoi(token);
     token = next_token(&rest); if (!token) return; HIS_STRNCPY(p->bed_id, token, sizeof(p->bed_id));
