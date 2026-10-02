@@ -7,6 +7,8 @@
 ![Language](https://img.shields.io/badge/language-C99-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![Build](https://img.shields.io/badge/build-VS2022%20%7C%20GCC-green.svg)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
 ---
@@ -272,6 +274,23 @@ his.exe          # Windows
 | 管理员 | `admin` | `123456` |
 | 医生 | 见 `data/doctor.txt` 中的 `account` 字段 | 由管理员创建时设置（文件中为混淆存储） |
 | 患者 | 患者 ID（`P` 开头） | 6 位访问 PIN（创建时可留空不设置） |
+
+### 6.5 运行回归测试
+
+项目自带**全流程回归测试**（81 项断言），覆盖「建科→建医生→建床位→建药品→患者自助建号/充值/挂号→医生接诊/写病历→药房发药→患者查费用/取消挂号退款→排班→预约/取消预约」的完整业务闭环：
+
+```bash
+cd HIS_System_Project
+bash tests/full_flow_test.sh
+```
+
+- 在 `tests/.work/` 独立数据目录中运行，绝不改动仓库里的种子数据
+- 覆盖输入校验、金额上限、库存上限、引用完整性、日期合法性与 EOF 等边界场景
+- 全部通过退出码为 0，否则打印失败项与详细输出路径
+
+CI（GitHub Actions）在 Linux / macOS / Windows 三平台执行构建 + 告警零容忍检查 + 回归测试，PR 必须全绿。
+
+> 注：测试中的排班日期在运行时动态生成（未来日期），不会因时间推移而失效。
 
 ---
 
