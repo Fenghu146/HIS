@@ -32,6 +32,8 @@ HIS_Syst.*/
 *.d
 build/
 out/
+his
+his.exe
 
 # ---------- IDE / 编辑器 ----------
 # JetBrains CLion

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build & Regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build (make)
+        working-directory: HIS_System_Project
+        run: make
+
+      - name: Check zero warnings (GCC/Clang)
+        if: runner.os != 'Windows'
+        working-directory: HIS_System_Project
+        run: |
+          make clean >/dev/null 2>&1 || true
+          out=$(make 2>&1 | grep -c "warning:" || true)
+          echo "warning count = $out"
+          if [ "$out" -ne 0 ]; then
+            echo "::error::编译告警未清零（$out 条）"
+            exit 1
+          fi
+
+      - name: Run full-flow regression tests
+        working-directory: HIS_System_Project
+        run: bash tests/full_flow_test.sh
+
+  build-msvc:
+    name: Build (MSVC)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build solution
+        run: msbuild HIS_System_Project/HIS_System_Project.sln /p:Configuration=Release /p:Platform=x64 /m
