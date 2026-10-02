@@ -29,6 +29,17 @@ PASS=0
 FAIL=0
 FAILED_LIST=""
 
+# 动态生成未来日期（避免硬编码日期随时间腐烂）：
+# Linux: date -d "+7 days" / BSD/macOS: date -v+7d
+if date -d "+7 days" +%F >/dev/null 2>&1; then
+    FUTURE_DATE="$(date -d "+7 days" +%F)"
+elif date -v+7d +%F >/dev/null 2>&1; then
+    FUTURE_DATE="$(date -v+7d +%F)"
+else
+    FUTURE_DATE="2099-01-01"
+fi
+echo "  (动态排班日期 = $FUTURE_DATE)"
+
 pass() { PASS=$((PASS + 1)); printf '  [PASS] %s\n' "$1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_LIST="$FAILED_LIST
   - $1"; printf '  [FAIL] %s\n' "$1"; }
@@ -300,7 +311,7 @@ K260920001
 $DOC1
 2026-02-30
 2026-13-01
-2026-09-21
+$FUTURE_DATE
 上午
 3
 0
