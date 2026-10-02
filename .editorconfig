@@ -1,0 +1,29 @@
+root = true
+
+# 全局约定：UTF-8 + LF，与数据文件文本契约一致
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C 源码：4 空格缩进，禁用 Tab
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+
+# Makefile 依赖 Tab 缩进
+[Makefile]
+indent_style = tab
+
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+[*.{sh,md}]
+indent_style = space
+indent_size = 4
+
+# Markdown 保留行尾空格（用于换行）
+[*.md]
+trim_trailing_whitespace = false
