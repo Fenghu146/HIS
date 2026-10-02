@@ -285,7 +285,7 @@ his.exe          # Windows
 
 ```bash
 cd HIS_System_Project
-bash tests/full_flow_test.sh
+make test                        # 或直接：bash tests/full_flow_test.sh
 ```
 
 - 在 `tests/.work/` 独立数据目录中运行，绝不改动仓库里的种子数据
