@@ -57,18 +57,19 @@ void addDoctor() {
     Department* dept = (Department*)dept_node->data;
     inputDoctorInfo(&d);
 
-    // 密码输入（inputDoctorInfo 不再处理密码）
+    // 密码输入（inputDoctorInfo 不再处理密码）；明文仅驻留栈上，落盘一律 sha256 摘要
     char* nl;
+    char pwd[MAX_PWD_LEN];
     while (1) {
         printf("请输入登录密码: ");
-        if (!fgets(d.password, MAX_PWD_LEN, stdin)) { ClearInputBuffer(); continue; }
-        nl = strchr(d.password, '\n');
+        if (!fgets(pwd, MAX_PWD_LEN, stdin)) { ClearInputBuffer(); continue; }
+        nl = strchr(pwd, '\n');
         if (nl) *nl = '\0';
         else ClearInputBuffer();
-        if (strlen(d.password) == 0) { printf("[错误] 密码不能为空！\n"); continue; }
+        if (strlen(pwd) == 0) { printf("[错误] 密码不能为空！\n"); continue; }
         break;
     }
-    passwordObfuscate(d.password);
+    credHash(d.password, sizeof(d.password), pwd);  /* 统一 sha256 存储 */
 
     // 设置每日最大挂号量
     char buf[MAX_LINE_LEN];
@@ -192,8 +193,7 @@ void modifyDoctor() {
             printf("请输入新密码: ");
             inputLine(buf, sizeof(buf));
             if (strlen(buf) == 0) { printf("[错误] 密码不能为空！\n"); break; }
-            HIS_STRNCPY(d->password, buf, MAX_PWD_LEN);
-            passwordObfuscate(d->password);
+            credHash(d->password, sizeof(d->password), buf);  /* 统一 sha256 存储 */
             printf("[成功] 密码已更新。\n");
             break;
 
@@ -381,10 +381,9 @@ static void inputDoctorInfo(Doctor* d) {
 
 static void formatDoctorLine(void* data, char* line) {
     Doctor* d = (Doctor*)data;
-    char pwd_hex[MAX_PWD_LEN * 2 + 16];
-    passwordHexEncode(d->password, pwd_hex, sizeof(pwd_hex));
+    /* 凭据字段已是文本形式（sha256:/hex:/明文），直接写入 */
     snprintf(line, MAX_LINE_LEN, "%s|%s|%s|%s|%s|%s|%d|%d|%s",
-        d->id, d->name, d->dept_id, d->specialty, d->account, pwd_hex,
+        d->id, d->name, d->dept_id, d->specialty, d->account, d->password,
         d->max_register, d->current_register, d->register_date);
 }
 
@@ -401,7 +400,17 @@ static void parseDoctorLine(char* line, void* data) {
     token = next_token(&rest); if (token) HIS_STRNCPY(d->dept_id, token, sizeof(d->dept_id));
     token = next_token(&rest); if (token) HIS_STRNCPY(d->specialty, token, sizeof(d->specialty));
     token = next_token(&rest); if (token) HIS_STRNCPY(d->account, token, sizeof(d->account));
-    token = next_token(&rest); if (token) passwordHexDecode(token, d->password, sizeof(d->password));
+    token = next_token(&rest);
+    if (token) {
+        /* 归一化旧格式：原始混淆字节 -> hex: 文本，保证文件始终为合法纯文本 */
+        int binary = 0;
+        const unsigned char* q;
+        for (q = (const unsigned char*)token; *q; q++) {
+            if (*q >= 0x80 || *q < 0x20) { binary = 1; break; }
+        }
+        if (binary) passwordHexEncode(token, d->password, sizeof(d->password));
+        else HIS_STRNCPY(d->password, token, sizeof(d->password));
+    }
     token = next_token(&rest); if (token) d->max_register = atoi(token);
     token = next_token(&rest); if (token) d->current_register = atoi(token);
     token = next_token(&rest); if (token) HIS_STRNCPY(d->register_date, token, sizeof(d->register_date));
@@ -409,4 +418,29 @@ static void parseDoctorLine(char* line, void* data) {
     /* 载入后校正：负的挂号量会导致限额判断反向 */
     if (d->max_register < 0) d->max_register = 0;
     if (d->current_register < 0) d->current_register = 0;
+}
+
+/* ==================== 登录凭据校验（统一 sha256） ====================
+ * 可校验三种格式：sha256: 摘要（当前）、hex: 混淆（旧版）、裸明文（旧版）。
+ * 旧格式匹配成功时立即迁移为 sha256 摘要并落盘；migrated 可为 NULL。 */
+int doctorVerifyPassword(Doctor* d, const char* plain, int* migrated) {
+    char stored[MAX_PWD_LEN], input[MAX_PWD_LEN];
+    if (migrated) *migrated = 0;
+    if (!d || !plain) return 0;
+    if (credIsHashed(d->password)) return credHashMatch(d->password, plain);
+
+    if (strncmp(d->password, "hex:", 4) == 0) {
+        passwordHexDecode(d->password, stored, sizeof(stored));  /* hex: -> 混淆字节 */
+    } else {
+        HIS_STRNCPY(stored, d->password, sizeof(stored));
+        passwordObfuscate(stored);                               /* 裸明文 -> 混淆字节 */
+    }
+    HIS_STRNCPY(input, plain, sizeof(input));
+    passwordObfuscate(input);
+    if (strcmp(stored, input) != 0) return 0;
+
+    credHash(d->password, sizeof(d->password), plain);           /* 迁移为 sha256 摘要 */
+    saveDoctorData();
+    if (migrated) *migrated = 1;
+    return 1;
 }

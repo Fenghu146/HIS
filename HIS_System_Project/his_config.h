@@ -13,6 +13,7 @@
 #define MAX_SPECIALTY_LEN   100     // 医生特长最大长度
 #define MAX_ID_LEN          20      // ID最大长度
 #define MAX_PWD_LEN         20      // 密码最大长度
+#define CRED_LEN          72      // 凭据字段长度：sha256: 前缀 + 64位十六进制 + NUL
 #define MAX_TIME_LEN        30      // 时间字符串最大长度
 #define MAX_DETAIL_LEN      200     // 详情/备注最大长度
 #define MAX_LINE_LEN        1024    // 文件读取行最大长度

@@ -7,8 +7,8 @@
  *   管理员密码持久化到 data/admin.dat，启动时覆盖默认值
  */
 
-/* 内存中的管理员密码副本，启动时从文件加载，修改时同步更新 */
-static char s_admin_password[MAX_PWD_LEN] = ADMIN_PASSWORD;
+/* 内存中的管理员凭据副本（sha256: 摘要），默认口令以哈希形态初始化，文件内容可覆盖 */
+static char s_admin_password[CRED_LEN];
 
 /*
  * 全局医生会话变量
@@ -30,13 +30,14 @@ char g_current_doctor_name[MAX_NAME_LEN] = {0};
  * 文件存在时读取第一行覆盖内存中的密码副本。
  */
 static void loadAdminConfig() {
+    credHash(s_admin_password, sizeof(s_admin_password), ADMIN_PASSWORD);  /* 默认口令的哈希形态 */
     FILE* fp = fopen(ADMIN_CFG_FILE, "r");
     if (!fp) return;
-    char buf[MAX_PWD_LEN];
+    char buf[CRED_LEN];
     if (fgets(buf, sizeof(buf), fp)) {
         buf[strcspn(buf, "\n")] = '\0';
         if (strlen(buf) > 0) {
-            HIS_STRNCPY(s_admin_password, buf, MAX_PWD_LEN);
+            HIS_STRNCPY(s_admin_password, buf, sizeof(s_admin_password));
         }
     }
     fclose(fp);
@@ -58,13 +59,24 @@ static void saveAdminConfig() {
  *   - 新密码不允许为空
  *   - 两次输入必须一致
  */
+/* 校验管理员密码；旧版明文格式匹配成功时立即迁移为 sha256 并落盘 */
+static int adminVerifyPassword(const char* plain) {
+    if (credIsHashed(s_admin_password)) return credHashMatch(s_admin_password, plain);
+    if (plain && strcmp(plain, s_admin_password) == 0) {
+        credHash(s_admin_password, sizeof(s_admin_password), plain);
+        saveAdminConfig();
+        return 1;
+    }
+    return 0;
+}
+
 static void changeAdminPassword() {
     char old[MAX_PWD_LEN], new1[MAX_PWD_LEN], new2[MAX_PWD_LEN];
     printf("\n--- 修改管理员密码 ---\n");
 
     printf("请输入当前密码: ");
     if (!inputLine(old, sizeof(old))) return;
-    if (strcmp(old, s_admin_password) != 0) {
+    if (!adminVerifyPassword(old)) {
         printf("[错误] 当前密码错误！\n");
         return;
     }
@@ -83,7 +95,7 @@ static void changeAdminPassword() {
         return;
     }
 
-    HIS_STRNCPY(s_admin_password, new1, MAX_PWD_LEN);
+    credHash(s_admin_password, sizeof(s_admin_password), new1);
     saveAdminConfig();
     printf("[成功] 管理员密码已修改！\n");
 }
@@ -208,7 +220,8 @@ void printMainMenu() {
  *   2. 账号硬编码：管理员账号固定为 admin（在 his_config.h 中定义），不可修改
  *   3. 密码持久化：默认密码 123456，支持运行时通过管理员菜单修改，
  *      修改后的密码保存在 data/admin.dat 文件中
- *   4. 密码明文存储：管理员密码仅用于本地登录，风险可控
+ *   4. 凭据统一 SHA-256：管理员密码/医生密码/患者PIN 均存摘要（sha256: 前缀），
+ *      旧版明文/混淆格式登录成功时自动迁移
  * ==========================================================================
  */
 static int adminLogin() {
@@ -237,7 +250,7 @@ static int adminLogin() {
     HIS_STRNCPY(password, buf, MAX_PWD_LEN);
 
     if (strcmp(username, ADMIN_USERNAME) == 0 &&
-        strcmp(password, s_admin_password) == 0) {
+        adminVerifyPassword(password)) {
         fail_count = 0;  /* 成功后清零计数器 */
         PrintSeparator();
         printf("[登录成功] 欢迎使用HIS医院信息系统！\n");
@@ -314,41 +327,22 @@ static int doctorLogin(void) {
 
     printf("请输入密码：");
     if (!inputLine(buf, sizeof(buf))) return 0;
-    HIS_STRNCPY(password, buf, MAX_PWD_LEN);
-    passwordObfuscate(password);  /* 将输入密码混淆，与文件中已混淆的密码比对 */
+    HIS_STRNCPY(password, buf, MAX_PWD_LEN);  /* 明文仅驻留内存，落盘一律 sha256 摘要 */
+    int migrated = 0;
 
     ListNode* node = doctor_list->head;
     while (node) {
         Doctor* d = (Doctor*)node->data;
 
-        /* 路径一：直接比对（输入密码混淆后 == 文件中已混淆的密码） */
-        if (d && strcmp(d->account, username) == 0 && strcmp(d->password, password) == 0) {
+        /* sha256:/hex:/旧版明文 统一校验；旧格式匹配成功时自动迁移为 sha256 并落盘 */
+        if (d && strcmp(d->account, username) == 0 && doctorVerifyPassword(d, password, &migrated)) {
             PrintSeparator();
-            printf("[登录成功] 医生 %s 已登录。\n", d->name);
+            printf("[登录成功] 医生 %s 已登录%s。\n", d->name, migrated ? "（已迁移密码）" : "");
             PrintSeparator();
             fail_count = 0;
             HIS_STRNCPY(g_current_doctor_id, d->id, MAX_ID_LEN);
             HIS_STRNCPY(g_current_doctor_name, d->name, MAX_NAME_LEN);
             return 1;
-        }
-
-        /* 路径二：明文兼容迁移（旧数据中密码仍是明文） */
-        if (d && strcmp(d->account, username) == 0) {
-            char check[MAX_PWD_LEN];
-            HIS_STRNCPY(check, d->password, MAX_PWD_LEN);
-            passwordObfuscate(check);  /* 将文件中的密码混淆，与已混淆的输入比对 */
-            if (strcmp(check, password) == 0) {
-                /* 匹配成功 → d->password 原来是明文，替换为混淆版本 */
-                HIS_STRNCPY(d->password, password, MAX_PWD_LEN);
-                saveDoctorData();  /* 立即写回文件，下次登录走路径一 */
-                PrintSeparator();
-                printf("[登录成功] 医生 %s 已登录（已迁移密码）。\n", d->name);
-                PrintSeparator();
-                fail_count = 0;
-                HIS_STRNCPY(g_current_doctor_id, d->id, MAX_ID_LEN);
-                HIS_STRNCPY(g_current_doctor_name, d->name, MAX_NAME_LEN);
-                return 1;
-            }
         }
         node = node->next;
     }

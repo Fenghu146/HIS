@@ -133,7 +133,7 @@ static void parsePatient(char* line, void* data) {
     if (p->register_status < REG_STATUS_NONE || p->register_status > REG_STATUS_DONE) {
         p->register_status = REG_STATUS_NONE;
     }
-    if (p->pin[0] != '\0') {
+    if (p->pin[0] != '\0' && !credIsHashed(p->pin)) {  /* sha256: 摘要合法；旧版明文按 6 位数字校验 */
         int pin_ok = (strlen(p->pin) == 6);
         for (int i = 0; pin_ok && p->pin[i]; i++) {
             if (p->pin[i] < '0' || p->pin[i] > '9') pin_ok = 0;
@@ -385,7 +385,16 @@ int verifyPatientPin(Patient* p) {
     for (int tries = 0; tries < 3; tries++) {
         printf("请输入6位访问密码 (%d次尝试): ", 3 - tries);
         if (!inputLine(buf, sizeof(buf))) return 0;
-        if (strcmp(buf, p->pin) == 0) return 1;
+        {
+            int ok = credIsHashed(p->pin) ? credHashMatch(p->pin, buf) : (strcmp(buf, p->pin) == 0);
+            if (ok) {
+                if (!credIsHashed(p->pin)) {
+                    credHash(p->pin, sizeof(p->pin), buf);   /* 旧版明文 PIN -> 迁移为 sha256 */
+                    savePatientData();
+                }
+                return 1;
+            }
+        }
         printf("[错误] 密码错误！\n");
     }
     printf("[错误] 密码验证失败已达上限，操作取消。\n");
@@ -574,7 +583,7 @@ void inputPin(char* out_pin) {
         for (int i = 0; i < 6; i++) {
             if (buf[i] < '0' || buf[i] > '9') { valid = 0; break; }
         }
-        if (valid) HIS_STRNCPY(out_pin, buf, 7);
+        if (valid) credHash(out_pin, CRED_LEN, buf);  /* 统一 sha256 存储，明文不落盘 */
         else printf("[提示] 密码包含非数字字符，已跳过设置。\n");
     }
     else if (strlen(buf) > 0) {

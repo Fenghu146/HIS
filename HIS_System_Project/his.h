@@ -53,7 +53,7 @@ typedef struct {
     char dept_id[MAX_ID_LEN];          // 挂号科室ID
     int register_status;               // 0-未挂号 1-待就诊 2-就诊中 3-已完成
     char register_time[25];            // 挂号时间
-    char pin[7];                         // 6位访问密码(空串=未设置)
+    char pin[CRED_LEN];        // 访问凭据（sha256: 摘要；兼容旧版6位明文）
     char register_record_id[MAX_ID_LEN]; // 关联的挂号记录ID（精确退款用）
 
 } Patient;
@@ -86,7 +86,7 @@ typedef struct {
     char dept_id[MAX_ID_LEN];          // 所属科室ID
     char specialty[MAX_SPECIALTY_LEN];      // 擅长领域
     char account[MAX_NAME_LEN];        // 登录账号
-    char password[MAX_PWD_LEN];        // 登录密码
+    char password[CRED_LEN];   // 登录凭据（sha256: 摘要；兼容旧版hex:/明文）
 
     //医生每日挂号限额
     int max_register;                  // 每日最大挂号量
@@ -181,6 +181,16 @@ void PrintSeparator();                                              // 打印菜
 void passwordObfuscate(char* pwd);                                  // 密码混淆（nibble-swap）
 void passwordHexEncode(const char* raw, char* out, size_t cap);      // 密码字段编码为 hex: 文本
 int  passwordHexDecode(const char* field, char* out, size_t cap);    // 解码 hex: 字段，兼容旧版原始字节
+
+/* ===== 统一凭据存储（SHA-256）=====
+ * 字段格式："sha256:<64位十六进制>"（当前）｜"hex:<..>"（旧版混淆，仅医生）｜裸明文（旧版）。
+ * 旧格式在登录成功时自动迁移为 sha256 形式并落盘。 */
+void his_sha256_hex(const void* data, size_t len, char out_hex[65]);    // SHA-256 摘要（十六进制）
+void credHash(char* out, size_t cap, const char* plain);                // 明文 -> "sha256:<hex>" 凭据字段
+int  credIsHashed(const char* field);                                   // 是否为 sha256: 格式
+int  credHashMatch(const char* field, const char* plain);               // sha256: 字段与明文比对
+int  doctorVerifyPassword(Doctor* d, const char* plain, int* migrated); // 医生密码校验（旧格式自动迁移）
+
 void waitForEnter(void);                                            // 等待回车继续
 
 // ==================== 功能函数 ====================
