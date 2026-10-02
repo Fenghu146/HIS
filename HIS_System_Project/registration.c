@@ -98,8 +98,9 @@ static void checkAndResetDoctorDaily(Doctor* d) {
     char today[32];
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
-    snprintf(today, sizeof(today), "%04d-%02d-%02d",
-        tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    if (!tm || strftime(today, sizeof(today), "%Y-%m-%d", tm) == 0) {
+        HIS_STRNCPY(today, "1970-01-01", sizeof(today));
+    }
     if (strcmp(d->register_date, today) != 0) {
         d->current_register = 0;
         HIS_STRNCPY(d->register_date, today, sizeof(d->register_date));
@@ -273,9 +274,10 @@ void appointmentRegistration(Patient* p) {
     int sched_count = 0;
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
-    char today[11];
-    snprintf(today, sizeof(today), "%04d-%02d-%02d",
-        tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    char today[32];
+    if (!tm || strftime(today, sizeof(today), "%Y-%m-%d", tm) == 0) {
+        HIS_STRNCPY(today, "1970-01-01", sizeof(today));
+    }
 
     // 遍历并显示该科室所有医生的可用排班
     DoctorSchedule* sched_array[200];

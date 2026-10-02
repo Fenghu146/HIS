@@ -119,7 +119,9 @@ static int s_id_seq = 1;
 static void getIDDatePrefix(char* out, size_t cap) {
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
-    snprintf(out, cap, "%02d%02d%02d", tm->tm_year % 100, tm->tm_mon + 1, tm->tm_mday);
+    if (!tm || strftime(out, cap, "%y%m%d", tm) == 0) {
+        HIS_STRNCPY(out, "000000", cap);
+    }
 }
 
 /*
@@ -283,9 +285,9 @@ void passwordObfuscate(char* pwd) {
 void GetSystemTime(char* time_str) {
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
-    snprintf(time_str, MAX_TIME_LEN, "%04d-%02d-%02d %02d:%02d:%02d",
-        tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-        tm->tm_hour, tm->tm_min, tm->tm_sec);
+    if (!tm || strftime(time_str, MAX_TIME_LEN, "%Y-%m-%d %H:%M:%S", tm) == 0) {
+        HIS_STRNCPY(time_str, "1970-01-01 00:00:00", MAX_TIME_LEN);
+    }
 }
 
 // 保存数据到文件

@@ -17,16 +17,20 @@
 #include <ctype.h>
 #include "his_config.h"  // 全局配置常量
 
-/* 安全字符串拷贝，保证目标以 '\0' 结尾；cap 为目标缓冲区的总字节数 */
-#define HIS_STRNCPY(dst, src, cap) do { \
-    char* _his_d = (dst); \
-    size_t _his_c = (size_t)(cap); \
-    const char* _his_s = (src); \
-    if (_his_d && _his_c > 0U) { \
-        strncpy(_his_d, (_his_s) ? (_his_s) : "", _his_c - 1U); \
-        _his_d[_his_c - 1U] = '\0'; \
-    } \
-} while (0)
+/* 安全字符串拷贝，保证目标以 '\0' 结尾；cap 为目标缓冲区的总字节数。
+ * 使用 inline 函数 + memcpy + 显式结尾：
+ *   - 避免 strncpy 的截断告警与补零开销
+ *   - 数组实参传入函数后不再触发 -Waddress 恒真告警 */
+static inline void his_strncpy(char* dst, const char* src, size_t cap) {
+    if (dst == NULL || cap == 0U) return;
+    const char* s = (src != NULL) ? src : "";
+    size_t n = strlen(s);
+    if (n >= cap) n = cap - 1U;
+    memcpy(dst, s, n);
+    dst[n] = '\0';
+}
+
+#define HIS_STRNCPY(dst, src, cap) his_strncpy((dst), (src), (size_t)(cap))
 
 // ==================== 1. 统一结构体定义 (使用各模块中的宏) ====================
 

@@ -6,7 +6,7 @@
 #       make clean  —— 清理编译产物
 # ============================================================
 
-CC      ?= gcc
+CC      = gcc
 CFLAGS  ?= -std=c99 -Wall -Wextra -O2 -I.
 TARGET   = his
 

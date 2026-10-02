@@ -443,7 +443,8 @@ static void statsSubMenu() {
         if (dept_node) {
             Department* dept = (Department*)dept_node->data;
             calculateBedStats(dept_id, &total, &occupied);
-            char title[64];
+            /* 标题 = "科室 " + 科室名(最长 MAX_NAME_LEN-1) + " 床位统计" */
+            char title[MAX_NAME_LEN + 32];
             snprintf(title, sizeof(title), "科室 %s 床位统计", dept->name);
             printBedStats(title, total, occupied);
         }
