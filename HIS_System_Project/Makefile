@@ -14,7 +14,7 @@ SRCS = his_link.c his_tool.c his_main.c patient.c registration.c record.c \
        doctor.c dept_bed.c drug.c schedule.c admin_tools.c
 OBJS = $(SRCS:.c=.o)
 
-.PHONY: all run clean
+.PHONY: all run clean test check
 
 all: $(TARGET)
 
@@ -29,3 +29,9 @@ run: $(TARGET)
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(TARGET).exe
+
+# 全流程回归测试：在 tests/.work/ 下独立构建与运行，不污染源码树
+test: $(TARGET)
+	bash tests/full_flow_test.sh
+
+check: test
