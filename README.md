@@ -4,6 +4,9 @@
 > 采用**通用单向链表**在内存中管理业务数据，使用 **文本文件 + 原子写入**持久化，
 > 覆盖**管理员 / 医生 / 患者**三种角色的完整业务闭环。
 
+> **项目定位**：本仓库是 HIS 项目的**课程设计存档版本**，包含完整的课程设计报告与测试材料，定位为历史记录与教学参考，仅做维护性修复。
+> 后续功能开发与生产化演进在 C++20 主力实现 [Fenghu146/HIS_cpp](https://github.com/Fenghu146/HIS_cpp) 进行。
+
 ![Language](https://img.shields.io/badge/language-C99-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![Build](https://img.shields.io/badge/build-VS2022%20%7C%20GCC-green.svg)
