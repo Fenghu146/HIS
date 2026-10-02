@@ -26,7 +26,8 @@ DATA="$WORK/data"
 OUT="$WORK/out"
 
 CC="${CC:-gcc}"
-CFLAGS="-std=c99 -w -O2 -I."
+# 标志列表用数组承载，避免字切分歧义（shellcheck SC2086）
+CFLAGS=(-std=c99 -w -O2 -I.)
 # 超时保护：功能性探测而非 command -v——Windows Git Bash 的 PATH 里
 # timeout 解析到 System32\timeout.exe（拒绝 stdin 重定向，报错即退出），
 # 只有能真正跑通 `timeout 1 true` 的实现才可用。
@@ -93,7 +94,7 @@ setup() {
     printf '123456\n' > "$DATA/admin.dat"
 
     echo "编译中..."
-    ( cd "$WORK" && $CC $CFLAGS ./*.c -o his ) || { echo "编译失败，终止测试"; exit 1; }
+    ( cd "$WORK" && "$CC" "${CFLAGS[@]}" ./*.c -o his ) || { echo "编译失败，终止测试"; exit 1; }
     echo
 }
 
